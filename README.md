@@ -8,9 +8,11 @@
 
 ## Laboratoire WPA - PMKID
 
-__A faire en équipes de deux personnes__
+**Auteurs: Robin Müller, Stéphane Teixeira Carvalho**
 
-__Développement à faire en Python 3__
+__Nous avons dû utiliser scapy 2.4.3 pour pouvoir lire les packets d'une manière que nous trouvons plus propre.__
+
+__Pour pouvoir lancer nos scripts il faut donc l'installer en lançant la commande : ```pip install scapy==2.4.3```__
 
 ### Pour cette partie pratique, vous devez être capable de :
 
