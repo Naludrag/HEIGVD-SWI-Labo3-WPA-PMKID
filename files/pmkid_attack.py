@@ -83,7 +83,7 @@ def main():
     # Important parameters for key derivation - most of them can be obtained from the pcap file
     TARGET_SSID = b'Sunrise_2.4GHz_DD4B90'  # SSID of the AP that we would like to find the passphrase
     APmac, Clientmac, pmkid = getPMKIDInfo(wpa, TARGET_SSID)
-    pmk_name = b"PMK Name"  # this constant is used for the computation of the PMKID
+    pmk_name = b"PMK Name"  # This constant is used for the computation of the PMKID
 
     print("\n\nValues used to derivate keys")
     print("============================")
