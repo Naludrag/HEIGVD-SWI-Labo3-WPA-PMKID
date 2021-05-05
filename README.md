@@ -14,6 +14,8 @@ __Nous avons dû utiliser scapy 2.4.3 pour pouvoir lire les packets d'une maniè
 
 __Pour pouvoir lancer nos scripts il faut donc l'installer en lançant la commande : ```pip install scapy==2.4.3```__
 
+__Toute les captures d'écran se trouve dans le fichier [image](files/image)__
+
 ### Pour cette partie pratique, vous devez être capable de :
 
 * A partir d’une capture Wireshark, extraire la valeur de la PMKID utilisant Scapy

@@ -26,6 +26,7 @@ We decided to use this version because it offers a clean way to go through packe
 in the latest versions.
 """
 
+
 def customPRF512(key, A, B):
     """
     This function calculates the key expansion from the 256 bit PMK to the 512 bit PTK
@@ -79,9 +80,10 @@ def getHandshakeInfo(APmac, Clientmac, packets):
                                    a2b_hex(pkt.addr2.replace(':', '')) == APmac, packets))
     # Get the WPA_layer of the packets found contains the value of the handshake
     handshakePkts = list(map(lambda pkt: pkt.getlayer(WPA_key), pkts))
-    # The PMID are the last 16 bytes of the content of the wpa_key in scapy
+    # The PMKID are the last 16 bytes of the content of the wpa_key in scapy
     pmkid = handshakePkts[0].wpa_key[-16:]
     return pmkid
+
 
 def main():
     # Read capture file -- it contains beacon, authentication, association, handshake and data
@@ -90,7 +92,7 @@ def main():
     # Important parameters for key derivation - most of them can be obtained from the pcap file
     ssid, APmac, Clientmac = getAssociationRequestInfo(wpa)
     pmkid = getHandshakeInfo(APmac, Clientmac, wpa)
-    pmk_name = b"PMK Name"  # this string is used in the pseudo-random function
+    pmk_name = b"PMK Name"  # this constant is for the calcul of the PKID
 
     print("\n\nValues used to derivate keys")
     print("============================")
@@ -112,7 +114,7 @@ def main():
         passPhrase = str.encode(passPhrase)
         # Calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
         pmk = pbkdf2(hashlib.sha1, passPhrase, ssid, 4096, 32)
-        # Calculate the pmkid
+        # Calculate the PMKID
         pmkid_test = hmac.new(pmk, pmk_name + APmac + Clientmac, hashlib.sha1)
         # The sha-1 algorithm as 20 bytes as outputs but PMKID is only 16 bytes long
         # So we only take the first 16 bytes
