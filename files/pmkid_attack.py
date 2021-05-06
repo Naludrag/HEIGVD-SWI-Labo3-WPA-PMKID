@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Find the passphrase from the PMKID info
+Find the passphrase of an AP from the PMKID info
 """
 
 __author__ = "Robin Müller et Stéphane Teixeira Carvalho"
@@ -83,7 +83,7 @@ def main():
     # Important parameters for key derivation - most of them can be obtained from the pcap file
     TARGET_SSID = b'Sunrise_2.4GHz_DD4B90'  # SSID of the AP that we would like to find the passphrase
     APmac, Clientmac, pmkid = getPMKIDInfo(wpa, TARGET_SSID)
-    pmk_name = b"PMK Name"  # This constant is used for the computation of the PMKID
+    PMK_NAME = b"PMK Name"  # This constant is used for the computation of the PMKID
 
     print("\n\nValues used to derivate keys")
     print("============================")
@@ -103,7 +103,7 @@ def main():
         # Calculate 4096 rounds to obtain the 256 bit (32 oct) PMK
         pmk = pbkdf2(hashlib.sha1, passPhrase, TARGET_SSID, 4096, 32)
         # Calculate the PMKID with current pmk
-        pmkid_test = hmac.new(pmk, pmk_name + APmac + Clientmac, hashlib.sha1)
+        pmkid_test = hmac.new(pmk, PMK_NAME + APmac + Clientmac, hashlib.sha1)
         # The sha-1 algorithm has 20 bytes as output but PMKID is only 16 bytes long
         # So we only take the first 16 bytes
         if pmkid == pmkid_test.digest()[:16]:
